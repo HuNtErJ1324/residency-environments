@@ -8,7 +8,6 @@ Images for [`pretrain-gym`](../../environments/pretrain_gym/README.md). Neither 
 - `rescore.py`: final scoring of any corpus directory on this host's GPUs, with a chosen model, token budget, and seed, reporting validation and test loss and the loss on extra evaluation sets; `--eval-subsets` and `--eval-splits` evaluate fewer sets while still screening against all of them. Final corpora are kept for it with `scoring.keep_final_corpus`.
 - `build_corpus.py`: a corpus directory from a manifest of Hub datasets and weights in the format the pilot agents submitted, each source's stream prefix filling its share of a token budget, documents shuffled across sources.
 - `hellaswag.py`: HellaSwag validation accuracy of weights exported by final scoring (`scoring.export_weights`).
-- `redteam_decontamination.py`: on CPU, how much held-out text gets through scoring's decontamination under transformations (case, Unicode, templates, markup, homoglyphs, dropped or inserted words), and what it removes from FineWeb and from public copies of Paloma sources (WikiText-103, a C4 validation shard). Run it with `PYTHONHASHSEED=0`.
 
 ```bash
 docker build -f scripts/pretrain_gym/Dockerfile.agent -t pretrain-gym-agent:v1 scripts/pretrain_gym
