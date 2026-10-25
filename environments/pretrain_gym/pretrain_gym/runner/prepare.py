@@ -177,7 +177,8 @@ def screen_index(spec: dict, pool: Pool) -> str | None:
 
 
 def eval_sets(spec: dict, pool: Pool, tokenizer_hash: str, bos_id: int, dtype: str, out: Path) -> dict[str, dict]:
-    """Tokenize each evaluation set into `<out>/eval/<name>.bin`, through a cache; a name may contain `/`."""
+    """Tokenize each evaluation set into `<out>/eval/<name>.bin`, through a cache."""
+    (out / "eval").mkdir(parents=True, exist_ok=True)
     meta = {}
     for name, files in sorted(spec["eval"].items()):
         key = _digest(_file_identity(sorted(files)), spec["text_field"], tokenizer_hash, bos_id, dtype)
@@ -196,7 +197,6 @@ def eval_sets(spec: dict, pool: Pool, tokenizer_hash: str, bos_id: int, dtype: s
             except OSError:
                 shutil.rmtree(partial)
         target = out / "eval" / f"{name}.bin"
-        target.parent.mkdir(parents=True, exist_ok=True)
         target.unlink(missing_ok=True)
         target.symlink_to(cached / "tokens.bin")
         meta[name] = json.loads((cached / "meta.json").read_text())

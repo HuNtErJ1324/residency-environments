@@ -19,7 +19,7 @@ prepares the corpus, including removing held-out evaluation text from it.
 ## Reward
 
 `reward = p^{exponent:g}`, where `p = {p}` and `L` is the trained model's cross-entropy in nats \
-per token on the private part of {heldout}. A uniform prediction has loss {uniform:.4f} (reward 0); a higher `L` makes `p` negative, and the \
+per token on the private part of an undisclosed held-out evaluation set. A uniform prediction has loss {uniform:.4f} (reward 0); a higher `L` makes `p` negative, and the \
 reward is then `p`.
 
 ## Turns
@@ -28,7 +28,7 @@ reward is then `p`.
 
 ## Tools
 
-The workspace has no network access and {gpus}. Tool servers outside it provide:
+The workspace has no network access and no GPU. Tool servers outside it provide:
 
 - `hf` server, which sees Hugging Face as it was on {cutoff}:
   - `search`: search Hugging Face Hub datasets or models.
@@ -44,33 +44,17 @@ other training metrics.
 """
 
 
-PROBE_BUDGET = """
-Scoring runs may train on {tokens:,} tokens in total; a cancelled run counts the tokens it trained on.
-"""
-
-
 def render(config: PretrainTaskConfig, vocab_size: int) -> str:
-    scoring, eval_set = config.scoring, config.scoring.eval_set
+    scoring = config.scoring
     uniform = math.log(vocab_size)
     p = f"1 - L / {uniform:.4f}"
     if scoring.target_loss:
         p = f"({uniform:.4f} - L) / ({uniform:.4f} - {scoring.target_loss:g})"
-    heldout = "an undisclosed held-out evaluation set"
-    if eval_set.disclose:
-        heldout = f"the held-out evaluation set `{eval_set.repo_id}`"
-        if eval_set.subsets:
-            heldout += ", averaged over its subsets " + ", ".join(f"`{subset}`" for subset in eval_set.subsets)
-    gpus = {0: "no GPU", 1: "one GPU"}.get(config.workspace.gpu_count, f"{config.workspace.gpu_count} GPUs")
-    prompt = PROMPT.format(
+    return PROMPT.format(
         train_tokens=scoring.train_tokens,
         exponent=scoring.reward_exponent,
         p=p,
         uniform=uniform,
-        heldout=heldout,
         turns="There is no turn limit." if config.max_turns is None else f"You have {config.max_turns} turns.",
-        gpus=gpus,
         cutoff=config.hub.cutoff_date,
     )
-    if scoring.probe_budget is not None:
-        prompt += PROBE_BUDGET.format(tokens=scoring.probe_budget)
-    return prompt

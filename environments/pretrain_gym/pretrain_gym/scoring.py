@@ -143,11 +143,7 @@ def stage_code(config: ScoringConfig, destination: Path) -> None:
         for path in source.iterdir():
             if path.is_file() and path.suffix in {".py", ".json", ".md"}:
                 shutil.copy2(path, destination / path.name)
-    spec = model_spec(config)
-    if config.seed is not None:
-        spec["train"]["seed"] = config.seed
-        (destination / "model.json").write_text(json.dumps(spec, indent=2) + "\n")
-    shutil.copy2(tokenizer_file(spec), destination / "tokenizer.json")
+    shutil.copy2(tokenizer_file(model_spec(config)), destination / "tokenizer.json")
 
 
 @contextlib.asynccontextmanager
@@ -369,7 +365,7 @@ class Job:
                 progress.update(stage="evaluating")
         return progress
 
-    def cleanup(self, keep_corpus: bool = False) -> None:
-        """Delete the token files, and the snapshot unless kept; keep the specification, log, and outputs."""
-        for name in ("data",) if keep_corpus else ("corpus", "data"):
+    def cleanup(self) -> None:
+        """Delete the snapshot and token files; keep the specification, log, and outputs."""
+        for name in ("corpus", "data"):
             shutil.rmtree(self.directory / name, ignore_errors=True)

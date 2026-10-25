@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import date
 from pathlib import Path
@@ -11,7 +10,6 @@ from typing import Literal
 import verifiers.v1 as vf
 from pydantic import Field, model_validator
 from pydantic_config import BaseConfig
-from verifiers.v1.runtimes.base import parse_gpu
 
 MODELS_DIR = Path(__file__).parent / "models"
 PALOMA_SUBSETS = [
@@ -48,8 +46,6 @@ class EvalSetConfig(BaseConfig):
     """Measured by the agent's scorer tool and removed from training data."""
     test_split: str = "test"
     """Measured by final scoring; removed from training data at final scoring."""
-    disclose: bool = False
-    """The prompt names the set by `repo_id` and lists its subsets instead of calling it undisclosed."""
 
     @model_validator(mode="after")
     def _check_files(self) -> EvalSetConfig:
@@ -82,12 +78,8 @@ class ScoringConfig(BaseConfig):
     """Tokens the model trains on at final scoring."""
     min_probe_tokens: int | None = Field(None, ge=1)
     """Smallest probe run; None allows one optimizer step of the model."""
-    probe_budget: int | None = Field(None, ge=1)
-    """Tokens the agent's probe runs may train on in total, cancelled runs included; None is unlimited."""
     model: str = "nanogpt_speedrun"
     """A model directory bundled with this package, or a path to one."""
-    seed: int | None = None
-    """Replaces the model's `train.seed`; None keeps it."""
     eval_set: EvalSetConfig = EvalSetConfig()
     scorer: ScorerConfig = ScorerConfig()
     ngram: int = Field(13, ge=1)
@@ -97,8 +89,6 @@ class ScoringConfig(BaseConfig):
     reward_exponent: float = Field(2.0, gt=0.0)
     export_weights: bool = False
     """Final scoring also saves the trained weights to `<host_dir>/rollouts/<rollout>/final/out/model.pt`."""
-    keep_final_corpus: bool = False
-    """Final scoring keeps its corpus snapshot at `<host_dir>/rollouts/<rollout>/final/corpus` for re-scoring."""
 
     @property
     def model_dir(self) -> Path:
@@ -111,11 +101,6 @@ class ScoringConfig(BaseConfig):
             raise ValueError(f"model {self.model!r} needs model.json and train.py in {self.model_dir}")
         if self.min_probe_tokens is not None and self.min_probe_tokens > self.train_tokens:
             raise ValueError("min_probe_tokens cannot exceed train_tokens")
-        train = json.loads((self.model_dir / "model.json").read_text())["train"]
-        if self.seed is not None and "seed" not in train:
-            raise ValueError(f"model {self.model!r} has no train.seed to replace")
-        if self.probe_budget is not None and self.probe_budget < (self.min_probe_tokens or train["batch_tokens"]):
-            raise ValueError("probe_budget must allow at least the smallest probe run")
         return self
 
     def performance(self, loss: float, vocab_size: int) -> float:
@@ -141,12 +126,6 @@ class WorkspaceConfig(BaseConfig):
     cpu: float = 16.0
     memory: float = 64.0
     disk: float = 500.0
-    gpu: str | None = None
-    """The workspace's GPUs, stated in the prompt: a count such as "1" (Docker), or "H100_80GB:1" (Prime)."""
-
-    @property
-    def gpu_count(self) -> int:
-        return parse_gpu(self.gpu)[1]
 
 
 class PretrainTaskConfig(vf.TaskConfig):

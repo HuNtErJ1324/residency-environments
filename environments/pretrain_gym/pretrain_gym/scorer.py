@@ -118,17 +118,6 @@ class ScorerToolset(vf.Toolset[ScorerToolsetConfig, PretrainState]):
         """Optimizer steps a run of `train_tokens` takes; it trains on whole batches."""
         return max(1, train_tokens // self.batch_tokens)
 
-    def _budget_left(self) -> int | None:
-        """Probe tokens left, counting what finished runs trained on; None without `probe_budget`.
-
-        Failed runs record no `train_tokens`: a corpus error stops before training, and other failures
-        are not the agent's doing.
-        """
-        if self.scoring.probe_budget is None:
-            return None
-        finished = [probe.summary for probe in self.probes.values() if probe.summary is not None]
-        return self.scoring.probe_budget - sum(summary.get("train_tokens", 0) for summary in finished)
-
     def _workspace(self) -> DockerBox | PrimeBox:
         if self.state.workspace_kind == "prime" and self._client is None:
             self._client = AsyncSandboxClient()
@@ -206,19 +195,14 @@ class ScorerToolset(vf.Toolset[ScorerToolsetConfig, PretrainState]):
         One job runs at a time. When it finishes, its summary and per-step metrics are written to
         `scores/<job_id>/` in the workspace.
         """
-        minimum = self.scoring.min_probe_tokens or self.batch_tokens
-        tokens = self.scoring.train_tokens if train_tokens is None else train_tokens
+        budget, minimum = self.scoring.train_tokens, self.scoring.min_probe_tokens or self.batch_tokens
+        tokens = budget if train_tokens is None else train_tokens
+        if not minimum <= tokens <= budget:
+            return dict(error=f"train_tokens must be between {minimum:,} and {budget:,}")
         async with self._submitting:
             running = [probe.id for probe in self.probes.values() if probe.summary is None]
             if running:
                 return dict(error=f"job {running[0]} is still running; wait for it or cancel it")
-            maximum, left = self.scoring.train_tokens, self._budget_left()
-            if left is not None:
-                if left < minimum:
-                    return dict(error=f"the scoring budget has {left:,} tokens left; a run needs {minimum:,}")
-                maximum = min(maximum, left)
-            if not minimum <= tokens <= maximum:
-                return dict(error=f"train_tokens must be between {minimum:,} and {maximum:,}")
             workspace = self._workspace()
             if not await workspace.exists("corpus"):
                 return dict(error="corpus does not exist")
@@ -229,10 +213,7 @@ class ScorerToolset(vf.Toolset[ScorerToolsetConfig, PretrainState]):
             probe.task = asyncio.create_task(self._run(probe))
             self.probes[probe_id] = probe
         steps = self._steps(tokens)
-        response = dict(job_id=probe_id, status="running", train_tokens=steps * self.batch_tokens, total_steps=steps)
-        if left is not None:
-            response["scoring_tokens_left"] = left - steps * self.batch_tokens
-        return response
+        return dict(job_id=probe_id, status="running", train_tokens=steps * self.batch_tokens, total_steps=steps)
 
     @vf.tool
     async def score_status(self, job_id: str, wait_seconds: float = 0.0) -> dict:
@@ -266,9 +247,7 @@ class ScorerToolset(vf.Toolset[ScorerToolsetConfig, PretrainState]):
             return dict(job_id=job_id, status=probe.summary["status"])
         probe.task.cancel()
         await asyncio.gather(probe.task, return_exceptions=True)
-        # The trained tokens count against `probe_budget` and toward the `probe_tokens` metric.
-        probe.summary = dict(job_id=job_id, status="cancelled", train_tokens=probe.job.progress().get("tokens", 0))
-        (probe.job.directory / "summary.json").write_text(json.dumps(probe.summary, indent=2))
+        probe.summary = dict(job_id=job_id, status="cancelled")
         return probe.summary
 
 

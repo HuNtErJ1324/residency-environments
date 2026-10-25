@@ -15,7 +15,6 @@ import verifiers.v1 as vf
 from prime_sandboxes import AsyncSandboxClient
 from tokenizers import Tokenizer
 from verifiers.v1.runtimes import DockerRuntime, PrimeRuntime
-from verifiers.v1.runtimes.base import parse_gpu
 
 from .config import HubToolsetConfig, PretrainTaskConfig, PretrainTasksetConfig, ScorerToolsetConfig
 from .hub import HubToolset
@@ -59,18 +58,6 @@ class PretrainTask(vf.Task[vf.TaskData, PretrainState, PretrainTaskConfig]):
     async def setup(self, trace: vf.Trace, runtime: vf.Runtime) -> None:
         if not isinstance(runtime, DockerRuntime | PrimeRuntime):
             raise vf.TaskError(f"pretrain-gym needs the docker or prime runtime, not {runtime.type}")
-        gpus, stated = parse_gpu(runtime.config.gpu)[1], self.config.workspace.gpu_count
-        if gpus != stated:
-            raise vf.TaskError(
-                f"the runtime gives the workspace {gpus} GPU(s), but workspace.gpu, which the prompt states, gives {stated}"
-            )
-        scorer = self.config.scoring.scorer
-        # Docker gives a container the host's first GPUs, which host scoring would also lease.
-        if gpus and runtime.type == "docker" and scorer.backend == "host":
-            if scorer.gpus is None or any(gpu < gpus for gpu in scorer.gpus):
-                raise vf.TaskError(
-                    f"the workspace has host GPUs {list(range(gpus))}; set scoring.scorer.gpus to others"
-                )
         state = cast(PretrainState, trace.state)
         state.workspace, state.workspace_kind, state.rollout = runtime.info.id, runtime.type, trace.id
         trainer = self.host_dir / "rollouts" / trace.id / "trainer"
@@ -111,7 +98,7 @@ class PretrainTask(vf.Task[vf.TaskData, PretrainState, PretrainTaskConfig]):
             state.result = dict(corpus_error=str(exc))
             return
         finally:
-            job.cleanup(keep_corpus=scoring.keep_final_corpus)
+            job.cleanup()
             if vm is not None:
                 await vm.stop()
         state.result = dict(
@@ -159,8 +146,7 @@ class PretrainTask(vf.Task[vf.TaskData, PretrainState, PretrainTaskConfig]):
         metrics.update(
             probes=len(probes),
             probes_failed=sum(probe["status"] == "failed" for probe in probes),
-            # What `scoring.probe_budget` counts: done and cancelled runs; failed runs record none.
-            probe_tokens=sum(probe.get("train_tokens", 0) for probe in probes),
+            probe_tokens=sum(probe["train_tokens"] for probe in done),
         )
         if done:
             metrics.update(best_probe_loss=min(p["val_loss"] for p in done), last_probe_loss=done[-1]["val_loss"])
@@ -181,8 +167,6 @@ class PretrainTaskset(vf.Taskset[PretrainTask, PretrainTasksetConfig]):
             image=workspace.image,
             workdir=WORKDIR,
             network_allow=[],
-            resources=vf.TaskResources(
-                cpu=workspace.cpu, memory=workspace.memory, disk=workspace.disk, gpu=workspace.gpu
-            ),
+            resources=vf.TaskResources(cpu=workspace.cpu, memory=workspace.memory, disk=workspace.disk),
         )
         return [PretrainTask(data, config)]

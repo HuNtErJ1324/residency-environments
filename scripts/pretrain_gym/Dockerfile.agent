@@ -1,6 +1,5 @@
-# The agent's workspace: tools for reading, filtering, deduplicating, and tokenizing data, and for
-# running downloaded models (classifiers, embedders, small LMs). `TORCH_INDEX` picks the PyTorch
-# build: CPU by default, or a CUDA one for workspaces with a GPU (`workspace.gpu`).
+# The agent's workspace: CPU tools for reading, filtering, deduplicating, and tokenizing data,
+# and for running downloaded models (classifiers, embedders, small LMs) on CPU.
 # The workspace has no network at run time, so everything the agent may need is installed here.
 FROM python:3.12-slim-bookworm
 
@@ -27,8 +26,7 @@ RUN pip install \
     "tqdm==4.70.1" \
     "zstandard==0.25.0"
 
-ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
-RUN pip install --index-url "$TORCH_INDEX" "torch==2.14.1" \
+RUN pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1" \
     && pip install "transformers==5.19.0" "safetensors==0.8.0"
 
 # fastText language identification (lid.176), a common first filter for web text.

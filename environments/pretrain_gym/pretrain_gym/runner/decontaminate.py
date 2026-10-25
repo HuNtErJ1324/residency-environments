@@ -5,9 +5,7 @@ Text is compared as words: runs of letters and digits after Unicode compatibilit
 accents, punctuation, whitespace, and markup between words do not hide a copy. Every run of `n`
 consecutive words that also occurs in a held-out document is cut out of the training document.
 The pieces left between cuts become separate documents. Documents and pieces of fewer than `n`
-words are dropped, so no text that is kept shares `n` consecutive words with the held-out set. A
-document cut into more than `MAX_PIECES` pieces is mostly a copy whose edits broke some runs, and
-is dropped whole, as in GPT-3 (Brown et al., 2020).
+words are dropped, so no text that is kept shares `n` consecutive words with the held-out set.
 
 Word hashes use Python's string hash, so every process that shares an index must run with the
 same `PYTHONHASHSEED`.
@@ -23,7 +21,6 @@ import numpy as np
 import regex
 
 DEFAULT_NGRAM = 13
-MAX_PIECES = 10
 _RUN = regex.compile(r"[\w\p{Mn}\p{Me}\p{Cf}]+")
 _MARKS = regex.compile(r"[\p{Mn}\p{Me}\p{Cf}]+")
 _WORD = re.compile(r"[^\W_]+")
@@ -114,4 +111,4 @@ class NgramIndex:
             piece_start, piece_words = spans[index][1], 0
         if piece_words >= self.n:
             pieces.append(text[piece_start:].strip())
-        return ([] if len(pieces) > MAX_PIECES else pieces), True
+        return pieces, True
